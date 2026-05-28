@@ -1,0 +1,6 @@
+{
+  "name": "A&Acast 3D Blueprints",
+  "description": "Profesjonalny trójwymiarowy kreator blueprints i modeli voxelowych przy użyciu AI (Gemini 3.5), technologii 3D (Three.js) i interaktywnego edytora.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
