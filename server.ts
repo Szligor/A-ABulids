@@ -352,7 +352,7 @@ WAŻNE ZASADY PROJEKTOWANIA:
               color: { type: Type.STRING, description: "Kolor Hex (np. '#52341d')" },
               type: { 
                 type: Type.STRING, 
-                enum: ["stone", "wood", "planks", "leaves", "glass"],
+                enum: ["stone", "wood", "planks", "leaves", "glass", "dirt", "grass", "sand", "ore"],
                 description: "Typ fizycznego materiału do nałożenia tekstury" 
               }
             },

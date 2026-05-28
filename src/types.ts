@@ -3,7 +3,7 @@ export interface Voxel {
   y: number;
   z: number;
   color: string;
-  type: 'stone' | 'wood' | 'planks' | 'leaves' | 'glass';
+  type: 'stone' | 'wood' | 'planks' | 'leaves' | 'glass' | 'dirt' | 'grass' | 'sand' | 'ore';
 }
 
 export interface PresetBlueprint {
@@ -18,7 +18,7 @@ export interface PresetBlueprint {
 export interface PaletteItem {
   name: string;
   color: string;
-  type: 'stone' | 'wood' | 'planks' | 'leaves' | 'glass';
+  type: 'stone' | 'wood' | 'planks' | 'leaves' | 'glass' | 'dirt' | 'grass' | 'sand' | 'ore';
 }
 
 export type PaintBrushType = 'pencil' | 'brush2x2' | 'brush3x3' | 'pipette' | 'delete';

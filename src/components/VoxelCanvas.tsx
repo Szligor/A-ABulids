@@ -20,6 +20,16 @@ interface VoxelCanvasProps {
 }
 
 const textureCache: Record<string, THREE.CanvasTexture> = {};
+const materialCache: Record<string, THREE.MeshLambertMaterial> = {};
+
+// Shared geometries
+const sharedBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+const sharedEdgeGeo = new THREE.EdgesGeometry(sharedBoxGeo);
+const sharedEdgeMat = new THREE.LineBasicMaterial({ 
+  color: 0x000000, 
+  transparent: true, 
+  opacity: 0.23 
+});
 
 // Procedural pixel-art texture generator for voxel types
 const getProceduralTexture = (colorHex: string, type: string) => {
@@ -88,6 +98,42 @@ const getProceduralTexture = (colorHex: string, type: string) => {
     ctx.strokeStyle = 'rgba(255,255,255,0.5)';
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, 16, 16);
+  } else if (type === 'dirt') {
+    // Dirt noise
+    for (let i = 0; i < 30; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.05)';
+      ctx.fillRect(Math.floor(Math.random() * 16), Math.floor(Math.random() * 16), 2, 2);
+    }
+  } else if (type === 'grass') {
+    // Dirt base
+    ctx.fillStyle = '#79553a';
+    ctx.fillRect(0, 4, 16, 12);
+    for (let i = 0; i < 20; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.05)';
+      ctx.fillRect(Math.floor(Math.random() * 16), 4 + Math.floor(Math.random() * 12), 2, 2);
+    }
+    // Grass hanging over
+    ctx.fillStyle = colorHex;
+    for (let i = 0; i < 16; i++) {
+       ctx.fillRect(i, 4, 1, Math.floor(Math.random() * 4));
+    }
+  } else if (type === 'sand') {
+    // Sand noise
+    for (let i = 0; i < 40; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)';
+      ctx.fillRect(Math.floor(Math.random() * 16), Math.floor(Math.random() * 16), 1, 1);
+    }
+  } else if (type === 'ore') {
+    // Stone base
+    for (let i = 0; i < 20; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
+      ctx.fillRect(Math.floor(Math.random() * 16), Math.floor(Math.random() * 16), 1, 1);
+    }
+    // Ore speckles overlay
+    for (let i = 0; i < 6; i++) {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(Math.floor(Math.random() * 14 + 1), Math.floor(Math.random() * 14 + 1), 2, 2);
+    }
   }
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -184,7 +230,7 @@ export default function VoxelCanvas({
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
     // Cinematic default angle looking down at the construction plate
-    camera.position.set(16, 12, 16);
+    camera.position.set(24, 18, 24);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({
@@ -202,8 +248,13 @@ export default function VoxelCanvas({
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.maxPolarAngle = Math.PI / 2 - 0.01; // Avoid going fully underground
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.PAN,
+      RIGHT: null as any
+    };
     controls.minDistance = 5;
-    controls.maxDistance = 60;
+    controls.maxDistance = 100;
     controls.target.set(0, 3, 0);
     controlsRef.current = controls;
 
@@ -221,7 +272,7 @@ export default function VoxelCanvas({
     dirLight.shadow.camera.far = 40;
     
     // Expand shadow frustum for wider view
-    const d = 15;
+    const d = 25;
     dirLight.shadow.camera.left = -d;
     dirLight.shadow.camera.right = d;
     dirLight.shadow.camera.top = d;
@@ -231,14 +282,15 @@ export default function VoxelCanvas({
     dirLightRef.current = dirLight;
 
     // Grid System
-    const gridHelper = new THREE.GridHelper(30, 30, 0x808080, 0x4a4a55);
+    const gridSize = gridConfig.size;
+    const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x808080, 0x4a4a55);
     // Move grid slightly above the ground plane (-0.5) to prevent z-fighting / occlusion
     gridHelper.position.set(0.5, -0.49, 0.5);
     scene.add(gridHelper);
     gridHelperRef.current = gridHelper;
 
     // Invisible mouse collider plane for ground raycasting
-    const groundGeo = new THREE.PlaneGeometry(30, 30);
+    const groundGeo = new THREE.PlaneGeometry(gridSize, gridSize);
     groundGeo.rotateX(-Math.PI / 2);
     const groundMat = new THREE.MeshLambertMaterial({ color: 0x1f1f23, side: THREE.DoubleSide });
     const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -308,50 +360,41 @@ export default function VoxelCanvas({
     while (group.children.length > 0) {
       const child = group.children[0] as THREE.Mesh;
       group.remove(child);
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose());
-        } else {
-          child.material.dispose();
-        }
+      
+      while (child.children.length > 0) {
+        child.remove(child.children[0]);
       }
     }
 
     // Build the grid mesh array
-    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-    
-    // Thin charcoal outer borders around the blocks so borders are crisp
-    const edgeGeo = new THREE.EdgesGeometry(boxGeo);
-    const edgeMat = new THREE.LineBasicMaterial({ 
-      color: 0x000000, 
-      transparent: true, 
-      opacity: 0.23 
-    });
-
     let currentMaxY = 0;
 
     activeVoxels.forEach(v => {
       if (v.y > currentMaxY) currentMaxY = v.y;
 
-      const texture = getProceduralTexture(v.color, v.type);
-      const isGlass = v.type === 'glass';
+      const cacheKey = `${v.color}_${v.type}`;
+      let mat = materialCache[cacheKey];
+      
+      if (!mat) {
+        const texture = getProceduralTexture(v.color, v.type);
+        const isGlass = v.type === 'glass';
+        mat = new THREE.MeshLambertMaterial({
+          map: texture,
+          transparent: isGlass,
+          opacity: isGlass ? 0.72 : 1.0,
+          bumpScale: 0.05
+        });
+        materialCache[cacheKey] = mat;
+      }
 
-      const mat = new THREE.MeshLambertMaterial({
-        map: texture,
-        transparent: isGlass,
-        opacity: isGlass ? 0.72 : 1.0,
-        bumpScale: 0.05
-      });
-
-      const mesh = new THREE.Mesh(boxGeo, mat);
+      const mesh = new THREE.Mesh(sharedBoxGeo, mat);
       mesh.position.set(v.x, v.y, v.z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData = v; // Attach voxel spec for query sampling
 
       // Add neat lines around the cubes
-      const wire = new THREE.LineSegments(edgeGeo, edgeMat);
+      const wire = new THREE.LineSegments(sharedEdgeGeo, sharedEdgeMat);
       mesh.add(wire);
 
       group.add(mesh);
@@ -418,17 +461,19 @@ export default function VoxelCanvas({
 
       if (isect.object === ground) {
         const pointY = Math.round(isect.point.y);
+        const halfSize = gridConfig.size / 2;
         preview.position.set(
-          Math.max(-10, Math.min(10, Math.round(isect.point.x))),
+          Math.max(-halfSize, Math.min(halfSize, Math.round(isect.point.x))),
           Math.max(0, pointY >= 0 ? pointY : 0),
-          Math.max(-10, Math.min(10, Math.round(isect.point.z)))
+          Math.max(-halfSize, Math.min(halfSize, Math.round(isect.point.z)))
         );
       } else if (isect.face) {
         const normal = isect.face.normal;
         const placedPos = isect.object.position.clone().add(normal);
         
+        const halfSize = gridConfig.size / 2;
         // Block coordinate boundaries safeguard
-        if (placedPos.y >= 0 && placedPos.y <= 12 && Math.abs(placedPos.x) <= 10 && Math.abs(placedPos.z) <= 10) {
+        if (placedPos.y >= 0 && placedPos.y <= 64 && Math.abs(placedPos.x - 0.5) <= halfSize && Math.abs(placedPos.z - 0.5) <= halfSize) {
           preview.position.copy(placedPos);
         } else {
           preview.visible = false;
@@ -567,8 +612,9 @@ export default function VoxelCanvas({
             pt.z = startPos.z + offsetV;
           }
 
+          const halfSize = gridConfig.size / 2;
           // Bound checks
-          if (pt.y >= 0 && pt.y <= 12 && Math.abs(pt.x) <= 6 && Math.abs(pt.z) <= 6) {
+          if (pt.y >= 0 && pt.y <= 64 && Math.abs(pt.x) <= halfSize && Math.abs(pt.z) <= halfSize) {
             additions.push({
               x: pt.x,
               y: pt.y,
@@ -612,8 +658,8 @@ export default function VoxelCanvas({
         onMouseDown={handlePointerDown}
         onMouseUp={handlePointerUp}
         onMouseLeave={handleMouseLeave}
-        className="w-full h-full outline-none block bg-transparent"
         onContextMenu={(e) => e.preventDefault()}
+        className="w-full h-full outline-none block bg-transparent"
       />
     </div>
   );
